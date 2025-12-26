@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>PDF to Image Converter</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); min-height: 100vh; padding: 2rem 1rem; }
+.container { max-width: 900px; margin: 0 auto; background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+h1 { text-align: center; color: #333; margin-bottom: 2rem; font-size: 2.5rem; }
+.upload-area { border: 3px dashed #4CAF50; border-radius: 15px; padding: 3rem 2rem; text-align: center; margin-bottom: 2rem; transition: all 0.3s ease; }
+.upload-area:hover { border-color: #45a049; background: #f8fff8; }
+.upload-area.dragover { border-color: #2196F3; background: #f0f8ff; transform: scale(1.02); }
+.upload-btn { background: #4CAF50; color: white; padding: 12px 30px; border: none; border-radius: 25px; cursor: pointer; font-size: 1rem; margin: 1rem 0.5rem; transition: all 0.3s ease; }
+.upload-btn:hover { background: #45a049; transform: translateY(-2px); }
+.converter-options { display: none; margin: 2rem 0; padding: 1rem; background: #f8f9fa; border-radius: 15px; }
+.option-btn { background: #4CAF50; color: white; padding: 8px 20px; border: none; border-radius: 20px; cursor: pointer; margin: 0.5rem; transition: all 0.3s ease; }
+.option-btn:hover { background: #45a049; transform: scale(1.05); }
+.option-btn.active { background: #2196F3; }
+.preview-area { display: none; margin: 2rem 0; }
+.page-previews { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 2rem 0; }
+.page-preview { border: 2px solid #ddd; border-radius: 10px; padding: 1rem; background: white; text-align: center; transition: all 0.3s ease; }
+.page-preview:hover { border-color: #4CAF50; transform: translateY(-5px); }
+.page-preview.selected { border-color: #2196F3; background: #f0f8ff; }
+.page-canvas { max-width: 100%; height: auto; border-radius: 5px; cursor: pointer; }
+.convert-controls { text-align: center; margin: 2rem 0; }
+.quality-slider { width: 200px; margin: 0 10px; }
+.download-area { display: none; text-align: center; margin: 2rem 0; padding: 2rem; background: #f0fff0; border-radius: 15px; }
+.download-btn { background: #4CAF50; color: white; padding: 15px 40px; border: none; border-radius: 25px; font-size: 1.2rem; cursor: pointer; margin: 1rem; transition: all 0.3s ease; }
+.download-btn:hover { background: #45a049; transform: scale(1.05); }
+.back-btn { position: absolute; top: 2rem; left: 2rem; background: linear-gradient(135deg, #4CAF50, #45a049); color: white; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; text-decoration: none; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3); transition: all 0.3s ease; display: flex; align-items: center; gap: 8px; }
+.back-btn:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4); }
+.download-btn-project { position: fixed; bottom: 20px; right: 20px; background: #4CAF50; color: white; border: none; padding: 15px; border-radius: 50%; font-size: 1.5rem; cursor: pointer; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3); transition: all 0.3s ease; z-index: 1000; }
+.download-btn-project:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4); }
+</style>
+</head>
+<body>
+<a href="./home.html" class="back-btn">← Back to Home</a>
+<div class="container">
+<h1>🖼️ PDF to Image Converter</h1>
+<div class="upload-area" id="uploadArea">
+<div style="font-size: 4rem; margin-bottom: 1rem;">📄</div>
+<p><strong>Upload PDF to Convert</strong></p>
+<p style="font-size: 0.9rem; color: #666; margin: 0.5rem 0;">Select a PDF file to convert to images</p>
+<button class="upload-btn" onclick="document.getElementById('fileInput').click()">📂 Select PDF File</button>
+<input type="file" id="fileInput" style="display: none;" accept=".pdf">
+</div>
+
+<div class="converter-options" id="converterOptions">
+<h3>🎛️ Conversion Options</h3>
+<div style="margin: 1rem 0;">
+<button class="option-btn active" onclick="setConversionType('all')" id="allBtn">Convert All Pages</button>
+<button class="option-btn" onclick="setConversionType('selected')" id="selectedBtn">Select Pages</button>
+</div>
+<div style="margin: 1rem 0;">
+<label>Image Format: </label>
+<select id="formatSelect" style="padding: 5px; border-radius: 5px; margin: 0 10px;">
+<option value="png">PNG (High Quality)</option>
+<option value="jpeg">JPEG (Smaller Size)</option>
+</select>
+</div>
+<div style="margin: 1rem 0;">
+<label>Quality: </label>
+<input type="range" id="qualitySlider" class="quality-slider" min="0.1" max="2.0" step="0.1" value="1.0">
+<span id="qualityValue">1.0x</span>
+</div>
+</div>
+
+<div class="preview-area" id="previewArea">
+<h3>📖 Page Preview</h3>
+<p id="pdfInfo">Loading PDF...</p>
+<div class="page-previews" id="pagePreviews"></div>
+<div class="convert-controls">
+<button class="download-btn" onclick="convertToImages()">🖼️ Convert to Images</button>
+</div>
+</div>
+
+<div class="download-area" id="downloadArea">
+<h3>✅ Conversion Complete!</h3>
+<p>Your images are ready for download</p>
+<div id="downloadLinks"></div>
+<button class="download-btn" onclick="downloadAllAsZip()" style="background: #FF9800;">📦 Download All as ZIP</button>
+<button class="download-btn" onclick="resetConverter()" style="background: #2196F3;">🔄 Convert Another PDF</button>
+</div>
+</div>
+<button class="download-btn-project" onclick="downloadProject()" title="Download Project">📥</button>
+
+<script>
+let pdfDoc = null;
+let conversionType = 'all';
+let selectedPages = new Set();
+
+document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+document.getElementById('qualitySlider').addEventListener('input', updateQualityValue);
+
+async function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file || file.type !== 'application/pdf') {
+    alert('Please select a valid PDF file');
+    return;
+  }
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    pdfDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+    
+    document.getElementById('converterOptions').style.display = 'block';
+    document.getElementById('previewArea').style.display = 'block';
+    document.getElementById('pdfInfo').textContent = `PDF loaded: ${file.name} (${pdfDoc.numPages} pages)`;
+    
+    await renderPagePreviews();
+    
+  } catch (error) {
+    alert('Error loading PDF: ' + error.message);
+  }
+}
+
+function setConversionType(type) {
+  conversionType = type;
+  document.querySelectorAll('.option-btn').forEach(btn => btn.classList.remove('active'));
+  
+  if (type === 'all') {
+    document.getElementById('allBtn').classList.add('active');
+    selectedPages.clear();
+    document.querySelectorAll('.page-preview').forEach(preview => {
+      preview.classList.remove('selected');
+    });
+  } else {
+    document.getElementById('selectedBtn').classList.add('active');
+  }
+}
+
+async function renderPagePreviews() {
+  const container = document.getElementById('pagePreviews');
+  container.innerHTML = '';
+  
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const page = await pdfDoc.getPage(i);
+    const viewport = page.getViewport({ scale: 0.3 });
+    
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+    canvas.className = 'page-canvas';
+    
+    await page.render({ canvasContext: context, viewport: viewport }).promise;
+    
+    const previewDiv = document.createElement('div');
+    previewDiv.className = 'page-preview';
+    previewDiv.innerHTML = `
+      <div style="font-weight: bold; margin-bottom: 0.5rem;">Page ${i}</div>
+    `;
+    previewDiv.appendChild(canvas);
+    
+    canvas.onclick = () => togglePageSelection(i, previewDiv);
+    container.appendChild(previewDiv);
+  }
+}
+
+function togglePageSelection(pageNum, previewDiv) {
+  if (conversionType === 'all') return;
+  
+  if (selectedPages.has(pageNum)) {
+    selectedPages.delete(pageNum);
+    previewDiv.classList.remove('selected');
+  } else {
+    selectedPages.add(pageNum);
+    previewDiv.classList.add('selected');
+  }
+}
+
+function updateQualityValue() {
+  const value = document.getElementById('qualitySlider').value;
+  document.getElementById('qualityValue').textContent = value + 'x';
+}
+
+let convertedBlobs = [];
+
+async function convertToImages() {
+  if (!pdfDoc) return;
+  
+  const format = document.getElementById('formatSelect').value;
+  const quality = parseFloat(document.getElementById('qualitySlider').value);
+  
+  let pagesToConvert = [];
+  if (conversionType === 'all') {
+    pagesToConvert = Array.from({length: pdfDoc.numPages}, (_, i) => i + 1);
+  } else {
+    if (selectedPages.size === 0) {
+      alert('Please select at least one page to convert');
+      return;
+    }
+    pagesToConvert = Array.from(selectedPages).sort((a, b) => a - b);
+  }
+  
+  const downloadLinks = document.getElementById('downloadLinks');
+  downloadLinks.innerHTML = '<p>Converting pages...</p>';
+  convertedBlobs = [];
+  
+  try {
+    for (const pageNum of pagesToConvert) {
+      const page = await pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: quality });
+      
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      
+      await page.render({ canvasContext: context, viewport: viewport }).promise;
+      
+      // Convert to blob
+      const blob = await new Promise(resolve => {
+        if (format === 'png') {
+          canvas.toBlob(resolve, 'image/png');
+        } else {
+          canvas.toBlob(resolve, 'image/jpeg', 0.9);
+        }
+      });
+      
+      convertedBlobs.push({ blob, filename: `page_${pageNum}.${format}` });
+      
+      // Create download link
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `page_${pageNum}.${format}`;
+      link.textContent = `📥 Download Page ${pageNum} (${format.toUpperCase()})`;
+      link.style.display = 'block';
+      link.style.margin = '0.5rem 0';
+      link.style.color = '#4CAF50';
+      link.style.textDecoration = 'none';
+      link.style.padding = '0.5rem';
+      link.style.border = '1px solid #4CAF50';
+      link.style.borderRadius = '5px';
+      link.style.textAlign = 'center';
+      
+      downloadLinks.appendChild(link);
+    }
+    
+    downloadLinks.innerHTML = downloadLinks.innerHTML.replace('<p>Converting pages...</p>', '');
+    document.getElementById('downloadArea').style.display = 'block';
+    document.getElementById('previewArea').style.display = 'none';
+    
+  } catch (error) {
+    alert('Error converting PDF: ' + error.message);
+  }
+}
+
+function resetConverter() {
+  pdfDoc = null;
+  selectedPages.clear();
+  conversionType = 'all';
+  
+  document.getElementById('converterOptions').style.display = 'none';
+  document.getElementById('previewArea').style.display = 'none';
+  document.getElementById('downloadArea').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+  
+  setConversionType('all');
+}
+
+async function downloadAllAsZip() {
+  if (convertedBlobs.length === 0) {
+    alert('No images to download');
+    return;
+  }
+  
+  const JSZip = window.JSZip || await import('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js').then(m => m.default);
+  
+  try {
+    const zip = new JSZip();
+    
+    for (const item of convertedBlobs) {
+      zip.file(item.filename, item.blob);
+    }
+    
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(zipBlob);
+    link.download = `pdf_images_${new Date().toISOString().slice(0,10)}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+    
+  } catch (error) {
+    // Fallback: download files individually
+    convertedBlobs.forEach((item, index) => {
+      setTimeout(() => {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(item.blob);
+        link.download = item.filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+      }, index * 200);
+    });
+  }
+}
+
+function downloadProject() {
+  window.location.href = '/download';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Image to PDF Converter</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #9C27B0 0%, #673AB7 100%); min-height: 100vh; padding: 2rem 1rem; }
+.container { max-width: 900px; margin: 0 auto; background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+h1 { text-align: center; color: #333; margin-bottom: 2rem; font-size: 2.5rem; }
+.upload-area { border: 3px dashed #9C27B0; border-radius: 15px; padding: 3rem 2rem; text-align: center; margin-bottom: 2rem; transition: all 0.3s ease; }
+.upload-area:hover { border-color: #673AB7; background: #faf8ff; }
+.upload-area.dragover { border-color: #4CAF50; background: #f0fff0; transform: scale(1.02); }
+.upload-btn { background: #9C27B0; color: white; padding: 12px 30px; border: none; border-radius: 25px; cursor: pointer; font-size: 1rem; margin: 1rem 0.5rem; transition: all 0.3s ease; }
+.upload-btn:hover { background: #673AB7; transform: translateY(-2px); }
+.image-previews { display: none; margin: 2rem 0; }
+.preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 2rem 0; }
+.image-item { border: 2px solid #ddd; border-radius: 10px; padding: 1rem; background: white; text-align: center; position: relative; }
+.image-item img { max-width: 100%; height: 150px; object-fit: cover; border-radius: 5px; }
+.remove-btn { position: absolute; top: 5px; right: 5px; background: #ff4757; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-size: 0.8rem; }
+.convert-btn { background: #4CAF50; color: white; padding: 15px 40px; border: none; border-radius: 25px; font-size: 1.2rem; cursor: pointer; margin: 1rem; transition: all 0.3s ease; }
+.convert-btn:hover { background: #45a049; transform: scale(1.05); }
+.back-btn { position: absolute; top: 2rem; left: 2rem; background: linear-gradient(135deg, #9C27B0, #673AB7); color: white; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; text-decoration: none; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 15px rgba(156, 39, 176, 0.3); transition: all 0.3s ease; display: flex; align-items: center; gap: 8px; }
+.back-btn:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 8px 25px rgba(156, 39, 176, 0.4); }
+.download-btn-project { position: fixed; bottom: 20px; right: 20px; background: #4CAF50; color: white; border: none; padding: 15px; border-radius: 50%; font-size: 1.5rem; cursor: pointer; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3); transition: all 0.3s ease; z-index: 1000; }
+.download-btn-project:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4); }
+</style>
+</head>
+<body>
+<a href="./home.html" class="back-btn">← Back to Home</a>
+<div class="container">
+<h1>📋 Image to PDF</h1>
+<div class="upload-area" id="uploadArea">
+<div style="font-size: 4rem; margin-bottom: 1rem;">🖼️</div>
+<p><strong>Upload Images to Convert</strong></p>
+<p style="font-size: 0.9rem; color: #666; margin: 0.5rem 0;">Drag & drop images or click to select multiple files</p>
+<button class="upload-btn" onclick="document.getElementById('fileInput').click()">📂 Select Images</button>
+<input type="file" id="fileInput" style="display: none;" accept="image/*,.webp,.bmp,.gif,.tiff,.svg" multiple>
+</div>
+
+<div class="image-previews" id="imagePreviews">
+<h3>📖 Image Preview</h3>
+<div style="text-align: center; margin: 1rem 0;">
+<button class="upload-btn" onclick="setLayout('single')" id="singleBtn" style="background: #2196F3;">📄 One Image Per Page</button>
+<button class="upload-btn" onclick="setLayout('multiple')" id="multipleBtn">📋 Multiple Images Per Page</button>
+</div>
+<div class="preview-grid" id="previewGrid"></div>
+<div style="text-align: center;">
+<button class="convert-btn" onclick="convertToPDF()">📄 Convert to PDF</button>
+</div>
+</div>
+</div>
+<button class="download-btn-project" onclick="downloadProject()" title="Download Project">📥</button>
+
+<script>
+let selectedImages = [];
+let layoutMode = 'single';
+
+document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+
+// Drag and drop functionality
+const uploadArea = document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadArea.classList.add('dragover');
+});
+
+uploadArea.addEventListener('dragleave', () => {
+  uploadArea.classList.remove('dragover');
+});
+
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadArea.classList.remove('dragover');
+  const files = Array.from(e.dataTransfer.files);
+  handleFileSelection(files);
+});
+
+function handleFileUpload(event) {
+  const files = Array.from(event.target.files);
+  handleFileSelection(files);
+}
+
+function handleFileSelection(files) {
+  selectedImages = []; // Clear previous selections
+  files.forEach(file => {
+    if (file.type.startsWith('image/')) {
+      selectedImages.push(file);
+    }
+  });
+  
+  if (selectedImages.length > 0) {
+    document.getElementById('imagePreviews').style.display = 'block';
+    renderImagePreviews();
+  }
+}
+
+function renderImagePreviews() {
+  const grid = document.getElementById('previewGrid');
+  grid.innerHTML = '';
+  
+  selectedImages.forEach((file, index) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const imageDiv = document.createElement('div');
+      imageDiv.className = 'image-item';
+      imageDiv.innerHTML = `
+        <button class="remove-btn" onclick="removeImage(${index})">×</button>
+        <img src="${e.target.result}" alt="Image ${index + 1}">
+        <p>Image ${index + 1}</p>
+      `;
+      grid.appendChild(imageDiv);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removeImage(index) {
+  selectedImages.splice(index, 1);
+  renderImagePreviews();
+  
+  if (selectedImages.length === 0) {
+    document.getElementById('imagePreviews').style.display = 'none';
+  }
+}
+
+function setLayout(mode) {
+  layoutMode = mode;
+  document.getElementById('singleBtn').style.background = mode === 'single' ? '#2196F3' : '#9C27B0';
+  document.getElementById('multipleBtn').style.background = mode === 'multiple' ? '#2196F3' : '#9C27B0';
+}
+
+async function convertToPDF() {
+  if (selectedImages.length === 0) {
+    alert('Please select at least one image');
+    return;
+  }
+  
+  try {
+    const pdfDoc = await PDFLib.PDFDocument.create();
+    let processedImages = 0;
+    
+    if (layoutMode === 'single') {
+      // One image per page
+      for (const file of selectedImages) {
+        try {
+          let image;
+          
+          if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+            const arrayBuffer = await file.arrayBuffer();
+            image = await pdfDoc.embedJpg(arrayBuffer);
+          } else if (file.type === 'image/png') {
+            const arrayBuffer = await file.arrayBuffer();
+            image = await pdfDoc.embedPng(arrayBuffer);
+          } else {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            await new Promise((resolve, reject) => {
+              img.onload = resolve;
+              img.onerror = reject;
+              img.src = URL.createObjectURL(file);
+            });
+            
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+            
+            const blob = await new Promise(resolve => {
+              canvas.toBlob(resolve, 'image/jpeg', 0.9);
+            });
+            
+            const convertedBuffer = await blob.arrayBuffer();
+            image = await pdfDoc.embedJpg(convertedBuffer);
+            URL.revokeObjectURL(img.src);
+          }
+          
+          const page = pdfDoc.addPage();
+          const { width: imgWidth, height: imgHeight } = image.scale(1);
+          const pageWidth = page.getWidth();
+          const pageHeight = page.getHeight();
+          
+          const scaleX = (pageWidth - 40) / imgWidth;
+          const scaleY = (pageHeight - 40) / imgHeight;
+          const scale = Math.min(scaleX, scaleY);
+          
+          const finalWidth = imgWidth * scale;
+          const finalHeight = imgHeight * scale;
+          
+          const x = (pageWidth - finalWidth) / 2;
+          const y = (pageHeight - finalHeight) / 2;
+          
+          page.drawImage(image, { x, y, width: finalWidth, height: finalHeight });
+          processedImages++;
+          
+        } catch (imageError) {
+          console.error(`Error processing image ${file.name}:`, imageError);
+          continue;
+        }
+      }
+    } else {
+      // Multiple images per page
+      let page = pdfDoc.addPage();
+      const pageWidth = page.getWidth();
+      const pageHeight = page.getHeight();
+      let currentY = pageHeight - 50;
+      
+      for (const file of selectedImages) {
+        try {
+          let image;
+          
+          if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+            const arrayBuffer = await file.arrayBuffer();
+            image = await pdfDoc.embedJpg(arrayBuffer);
+          } else if (file.type === 'image/png') {
+            const arrayBuffer = await file.arrayBuffer();
+            image = await pdfDoc.embedPng(arrayBuffer);
+          } else {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            await new Promise((resolve, reject) => {
+              img.onload = resolve;
+              img.onerror = reject;
+              img.src = URL.createObjectURL(file);
+            });
+            
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+            
+            const blob = await new Promise(resolve => {
+              canvas.toBlob(resolve, 'image/jpeg', 0.9);
+            });
+            
+            const convertedBuffer = await blob.arrayBuffer();
+            image = await pdfDoc.embedJpg(convertedBuffer);
+            URL.revokeObjectURL(img.src);
+          }
+          
+          const { width: imgWidth, height: imgHeight } = image.scale(1);
+          const maxWidth = pageWidth - 100;
+          const maxHeight = 120;
+          
+          const scaleX = maxWidth / imgWidth;
+          const scaleY = maxHeight / imgHeight;
+          const scale = Math.min(scaleX, scaleY);
+          
+          const finalWidth = imgWidth * scale;
+          const finalHeight = imgHeight * scale;
+          
+          if (currentY - finalHeight < 50) {
+            page = pdfDoc.addPage();
+            currentY = pageHeight - 50;
+          }
+          
+          const x = (pageWidth - finalWidth) / 2;
+          const y = currentY - finalHeight;
+          
+          page.drawImage(image, { x, y, width: finalWidth, height: finalHeight });
+          currentY = y - 30;
+          processedImages++;
+          
+        } catch (imageError) {
+          console.error(`Error processing image ${file.name}:`, imageError);
+          continue;
+        }
+      }
+    }
+    
+    if (processedImages === 0) {
+      alert('No valid images could be processed. Please check your image files.');
+      return;
+    }
+    
+    const pdfBytes = await pdfDoc.save();
+    
+    // Download PDF to device storage
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `merged_images_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`;
+    
+    // Force download to device storage
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Clean up blob URL
+    setTimeout(() => URL.revokeObjectURL(link.href), 100);
+    
+    alert(`PDF saved to Downloads folder with ${processedImages} images!`);
+    
+  } catch (error) {
+    console.error('PDF creation error:', error);
+    alert('Error creating PDF: ' + (error.message || 'Unknown error occurred'));
+  }
+}
+
+function downloadProject() {
+  window.location.href = '/download';
+}
+
+// Initialize with single layout
+setLayout('single');
+</script>
+</body>
+</html>

@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>PDF Editor</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ff6b6b 0%, #ffa726 100%); min-height: 100vh; padding: 2rem 1rem; }
+.container { max-width: 900px; margin: 0 auto; background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+h1 { text-align: center; color: #333; margin-bottom: 2rem; font-size: 2.5rem; }
+.upload-area { border: 3px dashed #ff6b6b; border-radius: 15px; padding: 3rem 2rem; text-align: center; margin-bottom: 2rem; transition: all 0.3s ease; }
+.upload-area:hover { border-color: #ffa726; background: #fff8f0; }
+.upload-area.dragover { border-color: #4CAF50; background: #f0fff0; transform: scale(1.02); }
+.upload-btn { background: #ff6b6b; color: white; padding: 12px 30px; border: none; border-radius: 25px; cursor: pointer; font-size: 1rem; margin: 1rem 0.5rem; transition: all 0.3s ease; }
+.upload-btn:hover { background: #ffa726; transform: translateY(-2px); }
+.editor-tools { display: none; margin: 2rem 0; padding: 1rem; background: #f8f9fa; border-radius: 15px; }
+.tool-btn { background: #ff6b6b; color: white; padding: 8px 20px; border: none; border-radius: 20px; cursor: pointer; margin: 0.5rem; transition: all 0.3s ease; }
+.tool-btn:hover { background: #ffa726; transform: scale(1.05); }
+.pdf-viewer { display: none; margin: 2rem 0; }
+.page-container { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; margin: 2rem 0; }
+.page-item { border: 2px solid #ddd; border-radius: 10px; padding: 1rem; background: white; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 300px; position: relative; }
+.page-effects { position: absolute; top: 5px; right: 5px; background: rgba(255,107,107,0.9); color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; }
+.page-overlay { position: absolute; top: 30px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 4px 8px; border-radius: 5px; font-size: 0.8rem; max-width: 90%; }
+.page-item.selected { border-color: #ff6b6b; }
+.page-canvas { max-width: 100%; height: auto; cursor: pointer; position: relative; }
+.text-mode .page-canvas { cursor: crosshair; }
+.text-overlay { position: absolute; background: rgba(255,107,107,0.8); color: white; padding: 2px 4px; border-radius: 3px; font-size: 10px; cursor: pointer; z-index: 10; }
+.text-overlay:hover { background: rgba(255,0,0,0.9); }
+.mode-indicator { background: #ff6b6b; color: white; padding: 5px 10px; border-radius: 15px; margin: 10px 0; font-size: 0.9rem; display: none; }
+.split-preview { display: none; margin: 2rem 0; padding: 1rem; background: #f8f9fa; border-radius: 15px; }
+.split-parts { display: flex; gap: 2rem; justify-content: center; flex-wrap: wrap; }
+.split-part { text-align: center; padding: 1rem; background: white; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+.split-controls { text-align: center; margin: 1rem 0; }
+.split-input { padding: 8px; border: 2px solid #ddd; border-radius: 5px; margin: 0 10px; width: 80px; text-align: center; }
+.remove-preview { display: none; margin: 2rem 0; padding: 1rem; background: #fff5f5; border-radius: 15px; border: 2px solid #ff4757; }
+.remove-controls { text-align: center; margin: 1rem 0; }
+.page-item.remove-mode { cursor: pointer; }
+.page-item.marked-for-removal { border-color: #ff4757; background: #fff5f5; }
+.page-item.marked-for-removal::after { content: '🗑️ REMOVE'; position: absolute; top: 5px; left: 5px; background: #ff4757; color: white; padding: 2px 6px; border-radius: 5px; font-size: 0.7rem; }
+.page-item.draggable { cursor: grab; }
+.page-item.dragging { opacity: 0.5; transform: rotate(5deg) scale(0.95); z-index: 1000; }
+.page-item.drag-over { border: 3px dashed #4CAF50; background: #f0fff0; }
+.swap-handle { position: absolute; top: 5px; right: 30px; background: rgba(102, 126, 234, 0.9); color: white; padding: 2px 6px; border-radius: 5px; font-size: 0.7rem; cursor: grab; }
+.swap-handle:hover { background: rgba(102, 126, 234, 1); }
+.popup-notification { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #ff4757; color: white; padding: 20px 40px; border-radius: 15px; font-size: 1.2rem; font-weight: bold; z-index: 9999; box-shadow: 0 10px 30px rgba(255, 71, 87, 0.3); animation: popupFade 2s ease-out forwards; }
+.image-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; display: none; }
+.image-modal-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2rem; border-radius: 20px; max-width: 500px; width: 90%; }
+.image-options { display: flex; gap: 1rem; margin: 1rem 0; }
+.image-option { flex: 1; padding: 1rem; border: 2px dashed #ddd; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.3s ease; }
+.image-option:hover { border-color: #ff6b6b; background: #fff8f0; }
+.image-search { margin: 1rem 0; }
+.image-search input { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; margin-bottom: 10px; }
+.search-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; max-height: 200px; overflow-y: auto; }
+.search-result-img { width: 100%; height: 80px; object-fit: cover; cursor: pointer; border-radius: 5px; border: 2px solid transparent; }
+.search-result-img:hover { border-color: #ff6b6b; }
+@keyframes popupFade { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); } }
+.page-tools { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.page-tool { background: #ff6b6b; color: white; padding: 4px 12px; border: none; border-radius: 15px; cursor: pointer; font-size: 0.8rem; }
+.page-tool:hover { background: #ffa726; }
+.download-btn { background: #4CAF50; color: white; padding: 15px 40px; border: none; border-radius: 25px; font-size: 1.2rem; cursor: pointer; margin: 1rem; transition: all 0.3s ease; }
+.download-btn:hover { background: #45a049; transform: scale(1.05); }
+.back-btn { position: absolute; top: 2rem; left: 2rem; background: linear-gradient(135deg, #ff6b6b, #ffa726); color: white; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; text-decoration: none; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3); transition: all 0.3s ease; display: flex; align-items: center; gap: 8px; }
+.back-btn:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4); }
+.download-btn-project { position: fixed; bottom: 20px; right: 20px; background: #4CAF50; color: white; border: none; padding: 15px; border-radius: 50%; font-size: 1.5rem; cursor: pointer; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3); transition: all 0.3s ease; z-index: 1000; }
+.download-btn-project:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4); }
+</style>
+</head>
+<body>
+<a href="./home.html" class="back-btn">← Back to Home</a>
+<div class="container">
+<h1>✏️ PDF Editor</h1>
+<div class="upload-area" id="uploadArea">
+<div style="font-size: 4rem; margin-bottom: 1rem;">📄</div>
+<p><strong>Upload PDF to Edit</strong></p>
+<p style="font-size: 0.9rem; color: #666; margin: 0.5rem 0;">Select a PDF file to start editing</p>
+<button class="upload-btn" onclick="document.getElementById('fileInput').click()">📂 Select PDF File</button>
+<input type="file" id="fileInput" style="display: none;" accept=".pdf">
+</div>
+
+<div class="editor-tools" id="editorTools">
+<h3>📝 Editing Tools</h3>
+
+<button class="tool-btn" onclick="addImage()">🖼️ Add Image</button>
+<button class="tool-btn" onclick="removePages()">🗑️ Remove Pages</button>
+<button class="tool-btn" onclick="rotatePages()">🔄 Rotate Pages</button>
+<button class="tool-btn" onclick="splitPDF()">✂️ Split PDF</button>
+<button class="tool-btn" onclick="toggleSwapMode()" id="swapModeBtn">🔄 Swap Pages</button>
+
+</div>
+
+<div class="pdf-viewer" id="pdfViewer">
+<h3>📖 PDF Preview</h3>
+<p id="pdfInfo">Loading PDF...</p>
+<div class="page-container" id="pageContainer"></div>
+<div class="split-preview" id="splitPreview">
+<h3>✂️ Split Preview</h3>
+<div class="split-controls">
+<label>Split at page: <input type="number" id="splitInput" class="split-input" min="1" onchange="updateSplitPreview()"></label>
+<button class="tool-btn" onclick="confirmSplit()">✂️ Confirm Split</button>
+<button class="tool-btn" onclick="cancelSplit()" style="background: #ff4757;">❌ Cancel</button>
+</div>
+<div class="split-parts" id="splitParts"></div>
+</div>
+<div class="remove-preview" id="removePreview">
+<h3>🗑️ Remove Pages</h3>
+<div class="remove-controls">
+<p>Click pages to mark for removal</p>
+<button class="tool-btn" onclick="confirmRemove()">🗑️ Remove Selected</button>
+<button class="tool-btn" onclick="cancelRemove()" style="background: #ff4757;">❌ Cancel</button>
+</div>
+<p id="removeInfo">No pages selected for removal</p>
+</div>
+<button class="download-btn" id="downloadBtn" onclick="downloadEditedPDF()" style="display: none;">📥 Download Edited PDF</button>
+</div>
+</div>
+<button class="download-btn-project" onclick="downloadProject()" title="Download Project">📥</button>
+
+<script>
+let currentPDF = null;
+let editedPDF = null;
+let pdfDoc = null;
+let selectedPage = 0;
+let pageEffects = {};
+let pageRotations = {};
+let textMode = false;
+let pageTexts = {};
+let splitMode = false;
+let removeMode = false;
+let pagesToRemove = new Set();
+let imageMode = false;
+let selectedImagePage = 0;
+let swapMode = false;
+let draggedPageIndex = null;
+
+document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+
+async function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file || file.type !== 'application/pdf') {
+    alert('Please select a valid PDF file');
+    return;
+  }
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    
+    // Create separate copies to avoid detachment
+    const pdfLibBuffer = arrayBuffer.slice();
+    const pdfJsBuffer = arrayBuffer.slice();
+    const editBuffer = arrayBuffer.slice();
+    
+    currentPDF = await PDFLib.PDFDocument.load(pdfLibBuffer);
+    pdfDoc = await pdfjsLib.getDocument(pdfJsBuffer).promise;
+    editedPDF = await PDFLib.PDFDocument.load(editBuffer);
+    
+    document.getElementById('editorTools').style.display = 'block';
+    document.getElementById('pdfViewer').style.display = 'block';
+    document.getElementById('pdfInfo').textContent = `PDF loaded: ${file.name} (${currentPDF.getPageCount()} pages)`;
+    
+    // Render all pages
+    await renderAllPages();
+    
+  } catch (error) {
+    alert('Error loading PDF: ' + error.message);
+  }
+}
+
+async function renderAllPages() {
+  const container = document.getElementById('pageContainer');
+  container.innerHTML = '';
+  
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const page = await pdfDoc.getPage(i);
+    const viewport = page.getViewport({ scale: 0.5 });
+    
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+    canvas.className = 'page-canvas';
+    
+    await page.render({ canvasContext: context, viewport: viewport }).promise;
+    
+    const pageDiv = document.createElement('div');
+    pageDiv.className = 'page-item';
+    pageDiv.id = `page-${i-1}`;
+    
+    const effects = pageEffects[i-1] || [];
+    const effectsCount = effects.length;
+    const effectsText = effectsCount > 0 ? `${effectsCount} edit${effectsCount > 1 ? 's' : ''}` : '';
+    
+    pageDiv.innerHTML = `
+      <div style="text-align: center; margin-bottom: 0.5rem; font-weight: bold;">Page ${i}</div>
+      ${effectsCount > 0 ? `<div class="page-effects">${effectsText}</div>` : ''}
+      ${swapMode ? `<div class="swap-handle" title="Drag to swap pages">↕️</div>` : ''}
+      ${effects.map(effect => `<div class="page-overlay">${effect}</div>`).join('')}
+      <div class="page-tools">
+        <button class="page-tool" onclick="rotatePage(${i-1})">🔄 Rotate</button>
+        <button class="page-tool" onclick="deletePage(${i-1})">🗑️ Delete</button>
+      </div>
+    `;
+    pageDiv.insertBefore(canvas, pageDiv.firstChild.nextSibling);
+    
+    canvas.onclick = (e) => handleCanvasClick(e, i-1, pageDiv, canvas);
+    
+    // Add drag and drop for swapping
+    if (swapMode) {
+      pageDiv.classList.add('draggable');
+      pageDiv.draggable = true;
+      pageDiv.addEventListener('dragstart', (e) => handleDragStart(e, i-1));
+      pageDiv.addEventListener('dragover', handleDragOver);
+      pageDiv.addEventListener('drop', (e) => handleDrop(e, i-1));
+      pageDiv.addEventListener('dragend', handleDragEnd);
+    }
+    
+    container.appendChild(pageDiv);
+  }
+}
+
+function selectPage(pageIndex, pageDiv) {
+  document.querySelectorAll('.page-item').forEach(item => item.classList.remove('selected'));
+  pageDiv.classList.add('selected');
+  selectedPage = pageIndex;
+}
+
+function toggleTextMode() {
+  textMode = !textMode;
+  const btn = document.getElementById('textModeBtn');
+  const indicator = document.getElementById('modeIndicator');
+  const container = document.getElementById('pageContainer');
+  
+  if (textMode) {
+    btn.textContent = '❌ Exit Text Mode';
+    btn.style.background = '#ff4757';
+    indicator.style.display = 'block';
+    container.classList.add('text-mode');
+  } else {
+    btn.textContent = '📝 Text Mode';
+    btn.style.background = '#ff6b6b';
+    indicator.style.display = 'none';
+    container.classList.remove('text-mode');
+  }
+}
+
+function handleCanvasClick(e, pageIndex, pageDiv, canvas) {
+  if (splitMode) return; // Disable clicks in split mode
+  
+  if (removeMode) {
+    togglePageForRemoval(pageIndex, pageDiv);
+    return;
+  }
+  
+  if (textMode) {
+    addTextAtPosition(e, pageIndex, pageDiv, canvas);
+  } else {
+    selectPage(pageIndex, pageDiv);
+  }
+}
+
+async function addTextAtPosition(e, pageIndex, pageDiv, canvas) {
+  const text = prompt('Enter text to add:');
+  if (!text) return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  
+  const canvasX = (e.clientX - rect.left) * scaleX;
+  const canvasY = (e.clientY - rect.top) * scaleY;
+  
+  // Convert to PDF coordinates (PDF origin is bottom-left)
+  const pdfX = canvasX * 2; // Scale up for PDF resolution
+  const pdfY = canvas.height * 2 - canvasY * 2; // Flip Y and scale
+  
+  const pages = editedPDF.getPages();
+  const page = pages[pageIndex];
+  
+  page.drawText(text, {
+    x: pdfX,
+    y: pdfY,
+    size: 12,
+    color: PDFLib.rgb(0, 0, 0)
+  });
+  
+  // Store text info for removal
+  if (!pageTexts[pageIndex]) pageTexts[pageIndex] = [];
+  const textId = Date.now();
+  pageTexts[pageIndex].push({ id: textId, text, x: pdfX, y: pdfY });
+  
+  // Add visual overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'text-overlay';
+  overlay.textContent = text.substring(0, 15) + (text.length > 15 ? '...' : '');
+  overlay.style.left = (e.clientX - rect.left - 10) + 'px';
+  overlay.style.top = (e.clientY - rect.top - 10) + 'px';
+  overlay.onclick = (e) => {
+    e.stopPropagation();
+    removeText(pageIndex, textId, overlay);
+  };
+  overlay.title = 'Click to remove';
+  
+  pageDiv.style.position = 'relative';
+  pageDiv.appendChild(overlay);
+  
+  // Track effect
+  if (!pageEffects[pageIndex]) pageEffects[pageIndex] = [];
+  pageEffects[pageIndex].push(`📝 Text: "${text.substring(0, 20)}${text.length > 20 ? '...' : ''}"`); 
+  
+  await updatePagePreview(pageIndex);
+  showDownloadButton();
+}
+
+async function removeText(pageIndex, textId, overlay) {
+  if (confirm('Remove this text?')) {
+    // Remove from visual
+    overlay.remove();
+    
+    // Remove from data
+    pageTexts[pageIndex] = pageTexts[pageIndex].filter(t => t.id !== textId);
+    
+    // Rebuild page without this text
+    await rebuildPage(pageIndex);
+    showDownloadButton();
+  }
+}
+
+async function rebuildPage(pageIndex) {
+  // Get original page from currentPDF
+  const originalPages = currentPDF.getPages();
+  const editedPages = editedPDF.getPages();
+  
+  // Copy original page content
+  const newPDF = await PDFLib.PDFDocument.create();
+  const [copiedPage] = await newPDF.copyPages(currentPDF, [pageIndex]);
+  
+  // Replace the page in editedPDF
+  editedPDF.removePage(pageIndex);
+  editedPDF.insertPage(pageIndex, copiedPage);
+  
+  // Re-add all remaining texts for this page
+  const page = editedPDF.getPages()[pageIndex];
+  if (pageTexts[pageIndex]) {
+    pageTexts[pageIndex].forEach(textInfo => {
+      page.drawText(textInfo.text, {
+        x: textInfo.x,
+        y: textInfo.y,
+        size: 12,
+        color: PDFLib.rgb(0, 0, 0)
+      });
+    });
+  }
+  
+  // Apply rotation if any
+  if (pageRotations[pageIndex]) {
+    page.setRotation(PDFLib.degrees(pageRotations[pageIndex]));
+  }
+  
+  await updatePagePreview(pageIndex);
+}
+
+
+
+async function rotatePage(pageIndex) {
+  if (!editedPDF) return;
+  
+  const pages = editedPDF.getPages();
+  const page = pages[pageIndex];
+  
+  // Track cumulative rotation
+  if (!pageRotations[pageIndex]) pageRotations[pageIndex] = 0;
+  pageRotations[pageIndex] += 90;
+  
+  // Apply cumulative rotation
+  page.setRotation(PDFLib.degrees(pageRotations[pageIndex]));
+  
+  // Track effect
+  if (!pageEffects[pageIndex]) pageEffects[pageIndex] = [];
+  pageEffects[pageIndex].push(`🔄 Rotated ${pageRotations[pageIndex]}°`);
+  
+  await updatePagePreview(pageIndex);
+  showDownloadButton();
+}
+
+async function deletePage(pageIndex) {
+  if (!editedPDF) return;
+  
+  if (confirm(`Delete page ${pageIndex + 1}?`)) {
+    editedPDF.removePage(pageIndex);
+    
+    // Remove effects for this page and shift others
+    delete pageEffects[pageIndex];
+    const newEffects = {};
+    Object.keys(pageEffects).forEach(key => {
+      const idx = parseInt(key);
+      if (idx > pageIndex) {
+        newEffects[idx - 1] = pageEffects[key];
+      } else {
+        newEffects[idx] = pageEffects[key];
+      }
+    });
+    pageEffects = newEffects;
+    
+    // Reload PDF for rendering
+    const pdfBytes = await editedPDF.save();
+    pdfDoc = await pdfjsLib.getDocument(pdfBytes).promise;
+    await renderAllPages();
+    
+    document.getElementById('pdfInfo').textContent = `PDF modified: ${editedPDF.getPageCount()} pages`;
+    showDownloadButton();
+  }
+}
+
+async function addText() {
+  toggleTextMode();
+}
+
+async function addImage() {
+  if (!editedPDF) return;
+  
+  imageMode = true;
+  showImageModal();
+}
+
+function showImageModal() {
+  const modal = document.createElement('div');
+  modal.className = 'image-modal';
+  modal.innerHTML = `
+    <div class="image-modal-content">
+      <h3>🖼️ Add Image</h3>
+      <div class="image-options">
+        <div class="image-option" onclick="selectFromDevice()">
+          📱<br>From Device
+        </div>
+        <div class="image-option" onclick="searchOnline()">
+          🔍<br>Search Online
+        </div>
+      </div>
+      <div class="image-search" id="imageSearch" style="display: none;">
+        <input type="text" id="searchInput" placeholder="Search for images..." onkeypress="if(event.key==='Enter') searchImages()">
+        <button class="tool-btn" onclick="searchImages()">🔍 Search</button>
+        <div class="search-results" id="searchResults"></div>
+      </div>
+      <input type="file" id="imageInput" style="display: none;" accept="image/*" onchange="handleImageUpload(event)">
+      <div style="text-align: center; margin-top: 1rem;">
+        <button class="tool-btn" onclick="closeImageModal()" style="background: #ff4757;">❌ Cancel</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  modal.style.display = 'block';
+  
+  // Close on background click
+  modal.onclick = (e) => {
+    if (e.target === modal) closeImageModal();
+  };
+}
+
+function selectFromDevice() {
+  document.getElementById('imageInput').click();
+}
+
+function searchOnline() {
+  document.getElementById('imageSearch').style.display = 'block';
+}
+
+async function handleImageUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    let image;
+    
+    if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+      image = await editedPDF.embedJpg(arrayBuffer);
+    } else if (file.type === 'image/png') {
+      image = await editedPDF.embedPng(arrayBuffer);
+    } else {
+      alert('Only JPG and PNG images are supported');
+      return;
+    }
+    
+    await addImageToPDF(image);
+    closeImageModal();
+    
+  } catch (error) {
+    alert('Error loading image: ' + error.message);
+  }
+}
+
+async function searchImages() {
+  const query = document.getElementById('searchInput').value;
+  if (!query) return;
+  
+  const results = document.getElementById('searchResults');
+  results.innerHTML = '<p>Searching images...</p>';
+  
+  try {
+    // Using Pixabay API (free, no auth required)
+    const response = await fetch(`https://pixabay.com/api/?key=9656065-a4094594c34f9ac14c7fc4c39&q=${encodeURIComponent(query)}&image_type=photo&per_page=12&safesearch=true&category=all`);
+    const data = await response.json();
+    
+    if (data.hits && data.hits.length > 0) {
+      results.innerHTML = '';
+      data.hits.forEach(hit => {
+        const img = document.createElement('img');
+        img.src = hit.previewURL;
+        img.className = 'search-result-img';
+        img.title = hit.tags;
+        img.onclick = () => downloadAndAddImage(hit.largeImageURL);
+        results.appendChild(img);
+      });
+    } else {
+      results.innerHTML = '<p>No images found. Try different keywords.</p>';
+    }
+  } catch (error) {
+    results.innerHTML = `
+      <p>Search failed. <a href="https://images.google.com/search?q=${encodeURIComponent(query)}&tbm=isch" target="_blank" style="color: #ff6b6b;">Search Google Images</a></p>
+      <p>Right-click and save image, then use "From Device" option.</p>
+    `;
+  }
+}
+
+async function downloadAndAddImage(imageUrl) {
+  try {
+    // Create image element to load the image
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    // Wait for image to load
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = imageUrl;
+    });
+    
+    // Create canvas to convert image to data
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    
+    // Draw image to canvas
+    ctx.drawImage(img, 0, 0);
+    
+    // Convert to blob
+    const blob = await new Promise(resolve => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.9);
+    });
+    
+    // Convert blob to array buffer
+    const arrayBuffer = await blob.arrayBuffer();
+    
+    // Embed in PDF
+    const image = await editedPDF.embedJpg(arrayBuffer);
+    await addImageToPDF(image);
+    closeImageModal();
+    
+  } catch (error) {
+    // Fallback: open image for manual download
+    window.open(imageUrl, '_blank');
+    alert('Could not directly import image. Image opened in new tab - right-click to save, then use "From Device" option.');
+  }
+}
+
+async function addImageToPDF(image) {
+  // Create a new page for the image
+  const newPage = editedPDF.addPage();
+  
+  // Get original image dimensions
+  const { width: imgWidth, height: imgHeight } = image;
+  const pageWidth = newPage.getWidth();
+  const pageHeight = newPage.getHeight();
+  
+  // Calculate scale to maintain aspect ratio while fitting on page
+  const maxWidth = pageWidth * 0.9; // Use 90% of page width
+  const maxHeight = pageHeight * 0.9; // Use 90% of page height
+  
+  const scaleX = maxWidth / imgWidth;
+  const scaleY = maxHeight / imgHeight;
+  const scale = Math.min(scaleX, scaleY, 1); // Don't upscale
+  
+  const finalWidth = imgWidth * scale;
+  const finalHeight = imgHeight * scale;
+  
+  // Center the image on the new page
+  const x = (pageWidth - finalWidth) / 2;
+  const y = (pageHeight - finalHeight) / 2;
+  
+  newPage.drawImage(image, {
+    x: x,
+    y: y,
+    width: finalWidth,
+    height: finalHeight
+  });
+  
+  // Get the new page index (last page)
+  const newPageIndex = editedPDF.getPageCount() - 1;
+  
+  // Track effect on the new page
+  if (!pageEffects[newPageIndex]) pageEffects[newPageIndex] = [];
+  pageEffects[newPageIndex].push(`🖼️ Image (${Math.round(finalWidth)}x${Math.round(finalHeight)})`);
+  
+  // Reload PDF and render all pages to show the new page
+  const pdfBytes = await editedPDF.save();
+  pdfDoc = await pdfjsLib.getDocument(pdfBytes).promise;
+  await renderAllPages();
+  
+  showDownloadButton();
+  alert(`High-quality image added to new page ${newPageIndex + 1}!`);
+}
+
+function closeImageModal() {
+  const modal = document.querySelector('.image-modal');
+  if (modal) {
+    modal.remove();
+  }
+  imageMode = false;
+}
+
+async function removePages() {
+  if (!editedPDF) return;
+  
+  removeMode = true;
+  pagesToRemove.clear();
+  
+  // Show popup notification
+  const popup = document.createElement('div');
+  popup.className = 'popup-notification';
+  popup.textContent = 'Select pages for delete';
+  document.body.appendChild(popup);
+  
+  setTimeout(() => {
+    if (popup.parentNode) {
+      popup.remove();
+    }
+  }, 2000);
+  
+  document.getElementById('removePreview').style.display = 'block';
+  document.getElementById('pageContainer').classList.add('remove-mode');
+  
+  // Update all page items for remove mode
+  document.querySelectorAll('.page-item').forEach((item, index) => {
+    item.classList.add('remove-mode');
+    const canvas = item.querySelector('.page-canvas');
+    canvas.onclick = (e) => {
+      e.stopPropagation();
+      togglePageForRemoval(index, item);
+    };
+  });
+  
+  updateRemoveInfo();
+}
+
+function togglePageForRemoval(pageIndex, pageItem) {
+  if (pagesToRemove.has(pageIndex)) {
+    pagesToRemove.delete(pageIndex);
+    pageItem.classList.remove('marked-for-removal');
+  } else {
+    pagesToRemove.add(pageIndex);
+    pageItem.classList.add('marked-for-removal');
+  }
+  updateRemoveInfo();
+}
+
+function updateRemoveInfo() {
+  const count = pagesToRemove.size;
+  const total = editedPDF.getPageCount();
+  const remaining = total - count;
+  
+  const info = document.getElementById('removeInfo');
+  if (count === 0) {
+    info.textContent = 'No pages selected for removal';
+    info.style.color = '#666';
+  } else {
+    const pages = Array.from(pagesToRemove).sort((a, b) => a - b).map(i => i + 1);
+    info.innerHTML = `<strong>${count} page${count > 1 ? 's' : ''} selected:</strong> ${pages.join(', ')}<br><strong>${remaining} page${remaining !== 1 ? 's' : ''} will remain</strong>`;
+    info.style.color = '#ff4757';
+  }
+}
+
+async function confirmRemove() {
+  if (pagesToRemove.size === 0) {
+    alert('No pages selected for removal');
+    return;
+  }
+  
+  const total = editedPDF.getPageCount();
+  if (pagesToRemove.size >= total) {
+    alert('Cannot remove all pages');
+    return;
+  }
+  
+  const pages = Array.from(pagesToRemove).sort((a, b) => a - b).map(i => i + 1);
+  if (!confirm(`Remove ${pages.length} page${pages.length > 1 ? 's' : ''}: ${pages.join(', ')}?`)) {
+    return;
+  }
+  
+  // Remove pages in reverse order to maintain indices
+  const sortedIndices = Array.from(pagesToRemove).sort((a, b) => b - a);
+  sortedIndices.forEach(index => {
+    editedPDF.removePage(index);
+  });
+  
+  // Update effects and rotations
+  const newEffects = {};
+  const newRotations = {};
+  const newTexts = {};
+  
+  let newIndex = 0;
+  for (let oldIndex = 0; oldIndex < total; oldIndex++) {
+    if (!pagesToRemove.has(oldIndex)) {
+      if (pageEffects[oldIndex]) newEffects[newIndex] = pageEffects[oldIndex];
+      if (pageRotations[oldIndex]) newRotations[newIndex] = pageRotations[oldIndex];
+      if (pageTexts[oldIndex]) newTexts[newIndex] = pageTexts[oldIndex];
+      newIndex++;
+    }
+  }
+  
+  pageEffects = newEffects;
+  pageRotations = newRotations;
+  pageTexts = newTexts;
+  
+  // Reload PDF
+  const pdfBytes = await editedPDF.save();
+  pdfDoc = await pdfjsLib.getDocument(pdfBytes).promise;
+  
+  cancelRemove();
+  await renderAllPages();
+  
+  document.getElementById('pdfInfo').textContent = `PDF modified: ${editedPDF.getPageCount()} pages remaining`;
+  showDownloadButton();
+  alert(`${pages.length} page${pages.length > 1 ? 's' : ''} removed successfully!`);
+}
+
+function cancelRemove() {
+  removeMode = false;
+  pagesToRemove.clear();
+  document.getElementById('removePreview').style.display = 'none';
+  document.getElementById('pageContainer').classList.remove('remove-mode');
+  
+  // Reset page items
+  document.querySelectorAll('.page-item').forEach((item, index) => {
+    item.classList.remove('remove-mode', 'marked-for-removal');
+    const canvas = item.querySelector('.page-canvas');
+    canvas.onclick = (e) => handleCanvasClick(e, index, item, canvas);
+  });
+}
+
+async function rotatePages() {
+  if (!editedPDF) return;
+  
+  const pages = editedPDF.getPages();
+  
+  // Track effects for all pages and apply cumulative rotation
+  for (let i = 0; i < pages.length; i++) {
+    if (!pageRotations[i]) pageRotations[i] = 0;
+    pageRotations[i] += 90;
+    
+    // Apply cumulative rotation to each page
+    pages[i].setRotation(PDFLib.degrees(pageRotations[i]));
+    
+    if (!pageEffects[i]) pageEffects[i] = [];
+    pageEffects[i].push(`🔄 Rotated ${pageRotations[i]}°`);
+  }
+  
+  // Reload preview
+  const pdfBytes = await editedPDF.save();
+  pdfDoc = await pdfjsLib.getDocument(pdfBytes).promise;
+  await renderAllPages();
+  
+  showDownloadButton();
+}
+
+async function splitPDF() {
+  if (!editedPDF) return;
+  
+  const pageCount = editedPDF.getPageCount();
+  if (pageCount < 2) {
+    alert('Need at least 2 pages to split');
+    return;
+  }
+  
+  splitMode = true;
+  document.getElementById('splitInput').max = pageCount - 1;
+  document.getElementById('splitInput').value = Math.floor(pageCount / 2);
+  document.getElementById('splitPreview').style.display = 'block';
+  document.getElementById('pageContainer').style.display = 'none';
+  
+  await updateSplitPreview();
+}
+
+async function updateSplitPreview() {
+  const splitAt = parseInt(document.getElementById('splitInput').value);
+  const pageCount = editedPDF.getPageCount();
+  
+  if (!splitAt || splitAt < 1 || splitAt >= pageCount) return;
+  
+  const splitParts = document.getElementById('splitParts');
+  splitParts.innerHTML = '';
+  
+  // Create preview for first part
+  const part1 = document.createElement('div');
+  part1.className = 'split-part';
+  part1.innerHTML = `
+    <h4>Part 1</h4>
+    <p>Pages 1 - ${splitAt}</p>
+    <p>${splitAt} page${splitAt > 1 ? 's' : ''}</p>
+    <canvas id="part1Canvas" width="150" height="200" style="border: 1px solid #ddd; margin: 10px 0;"></canvas>
+  `;
+  
+  // Create preview for second part
+  const part2 = document.createElement('div');
+  part2.className = 'split-part';
+  part2.innerHTML = `
+    <h4>Part 2</h4>
+    <p>Pages ${splitAt + 1} - ${pageCount}</p>
+    <p>${pageCount - splitAt} page${pageCount - splitAt > 1 ? 's' : ''}</p>
+    <canvas id="part2Canvas" width="150" height="200" style="border: 1px solid #ddd; margin: 10px 0;"></canvas>
+  `;
+  
+  splitParts.appendChild(part1);
+  splitParts.appendChild(part2);
+  
+  // Render first page of each part
+  await renderSplitPreview(1, 'part1Canvas');
+  await renderSplitPreview(splitAt + 1, 'part2Canvas');
+}
+
+async function renderSplitPreview(pageNum, canvasId) {
+  const page = await pdfDoc.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 0.3 });
+  
+  const canvas = document.getElementById(canvasId);
+  const context = canvas.getContext('2d');
+  canvas.height = viewport.height;
+  canvas.width = viewport.width;
+  
+  await page.render({ canvasContext: context, viewport: viewport }).promise;
+}
+
+async function confirmSplit() {
+  const splitAt = parseInt(document.getElementById('splitInput').value);
+  const pageCount = editedPDF.getPageCount();
+  
+  if (!splitAt || splitAt < 1 || splitAt >= pageCount) {
+    alert('Invalid split position');
+    return;
+  }
+  
+  // Create first part
+  const firstPart = await PDFLib.PDFDocument.create();
+  const firstPages = await firstPart.copyPages(editedPDF, Array.from({length: splitAt}, (_, i) => i));
+  firstPages.forEach(page => firstPart.addPage(page));
+  
+  // Create second part
+  const secondPart = await PDFLib.PDFDocument.create();
+  const secondPages = await secondPart.copyPages(editedPDF, Array.from({length: pageCount - splitAt}, (_, i) => i + splitAt));
+  secondPages.forEach(page => secondPart.addPage(page));
+  
+  // Download both parts
+  const firstBytes = await firstPart.save();
+  const secondBytes = await secondPart.save();
+  
+  downloadPDF(firstBytes, `split_part1_pages1-${splitAt}.pdf`);
+  setTimeout(() => {
+    downloadPDF(secondBytes, `split_part2_pages${splitAt + 1}-${pageCount}.pdf`);
+  }, 500);
+  
+  cancelSplit();
+  alert('PDF split successfully! Two files downloaded.');
+}
+
+function cancelSplit() {
+  splitMode = false;
+  document.getElementById('splitPreview').style.display = 'none';
+  document.getElementById('pageContainer').style.display = 'flex';
+}
+
+function toggleSwapMode() {
+  swapMode = !swapMode;
+  const btn = document.getElementById('swapModeBtn');
+  
+  if (swapMode) {
+    btn.textContent = '❌ Exit Swap Mode';
+    btn.style.background = '#ff4757';
+    
+    // Show popup notification
+    const popup = document.createElement('div');
+    popup.className = 'popup-notification';
+    popup.textContent = 'Drag pages to swap positions';
+    document.body.appendChild(popup);
+    
+    setTimeout(() => {
+      if (popup.parentNode) {
+        popup.remove();
+      }
+    }, 2000);
+  } else {
+    btn.textContent = '🔄 Swap Pages';
+    btn.style.background = '#ff6b6b';
+  }
+  
+  // Re-render pages to show/hide swap handles
+  renderAllPages();
+}
+
+function handleDragStart(e, pageIndex) {
+  draggedPageIndex = pageIndex;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function handleDrop(e, dropPageIndex) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  
+  if (draggedPageIndex !== null && draggedPageIndex !== dropPageIndex) {
+    swapPages(draggedPageIndex, dropPageIndex);
+  }
+}
+
+function handleDragEnd(e) {
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.page-item').forEach(item => {
+    item.classList.remove('drag-over');
+  });
+  draggedPageIndex = null;
+}
+
+async function swapPages(fromIndex, toIndex) {
+  try {
+    // Get all pages
+    const pages = editedPDF.getPages();
+    
+    // Create new PDF with swapped pages
+    const newPDF = await PDFLib.PDFDocument.create();
+    const pageOrder = Array.from({length: pages.length}, (_, i) => i);
+    
+    // Swap the indices
+    [pageOrder[fromIndex], pageOrder[toIndex]] = [pageOrder[toIndex], pageOrder[fromIndex]];
+    
+    // Copy pages in new order
+    for (const originalIndex of pageOrder) {
+      const [copiedPage] = await newPDF.copyPages(editedPDF, [originalIndex]);
+      newPDF.addPage(copiedPage);
+    }
+    
+    // Replace editedPDF with new PDF
+    editedPDF = newPDF;
+    
+    // Swap effects and rotations data
+    const tempEffects = pageEffects[fromIndex];
+    const tempRotations = pageRotations[fromIndex];
+    const tempTexts = pageTexts[fromIndex];
+    
+    pageEffects[fromIndex] = pageEffects[toIndex];
+    pageRotations[fromIndex] = pageRotations[toIndex];
+    pageTexts[fromIndex] = pageTexts[toIndex];
+    
+    pageEffects[toIndex] = tempEffects;
+    pageRotations[toIndex] = tempRotations;
+    pageTexts[toIndex] = tempTexts;
+    
+    // Reload PDF and render
+    const pdfBytes = await editedPDF.save();
+    pdfDoc = await pdfjsLib.getDocument(pdfBytes).promise;
+    await renderAllPages();
+    
+    showDownloadButton();
+    alert(`Pages ${fromIndex + 1} and ${toIndex + 1} swapped successfully!`);
+    
+  } catch (error) {
+    alert('Error swapping pages: ' + error.message);
+  }
+}
+
+function showDownloadButton() {
+  document.getElementById('downloadBtn').style.display = 'inline-block';
+}
+
+async function downloadEditedPDF() {
+  if (!editedPDF) return;
+  
+  const pdfBytes = await editedPDF.save();
+  downloadPDF(pdfBytes, `edited_pdf_${new Date().toISOString().slice(0,10)}.pdf`);
+}
+
+async function updatePagePreview(pageIndex) {
+  const pdfBytes = await editedPDF.save();
+  pdfDoc = await pdfjsLib.getDocument(pdfBytes).promise;
+  
+  // Re-render just the affected page
+  const page = await pdfDoc.getPage(pageIndex + 1);
+  const viewport = page.getViewport({ scale: 0.5 });
+  
+  const pageDiv = document.getElementById(`page-${pageIndex}`);
+  const canvas = pageDiv.querySelector('.page-canvas');
+  const context = canvas.getContext('2d');
+  
+  await page.render({ canvasContext: context, viewport: viewport }).promise;
+  
+  // Update effects display
+  const effects = pageEffects[pageIndex] || [];
+  const effectsCount = effects.length;
+  
+  // Remove old effects display
+  const oldEffects = pageDiv.querySelector('.page-effects');
+  const oldOverlays = pageDiv.querySelectorAll('.page-overlay');
+  if (oldEffects) oldEffects.remove();
+  oldOverlays.forEach(overlay => overlay.remove());
+  
+  // Add new effects display
+  if (effectsCount > 0) {
+    const effectsBadge = document.createElement('div');
+    effectsBadge.className = 'page-effects';
+    effectsBadge.textContent = `${effectsCount} edit${effectsCount > 1 ? 's' : ''}`;
+    pageDiv.appendChild(effectsBadge);
+    
+    effects.forEach(effect => {
+      const overlay = document.createElement('div');
+      overlay.className = 'page-overlay';
+      overlay.textContent = effect;
+      pageDiv.appendChild(overlay);
+    });
+  }
+}
+
+function downloadPDF(pdfBytes, filename) {
+  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+}
+
+function downloadProject() {
+  window.location.href = '/download';
+}
+</script>
+</body>
+</html>

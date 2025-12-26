@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>PDF Merger</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 2rem 1rem; }
+.container { max-width: 800px; margin: 0 auto; background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+h1 { text-align: center; color: #333; margin-bottom: 2rem; font-size: 2.5rem; }
+.upload-area { border: 3px dashed #667eea; border-radius: 15px; padding: 3rem 2rem; text-align: center; margin-bottom: 2rem; transition: all 0.3s ease; position: relative; }
+.upload-area:hover { border-color: #764ba2; background: #f8f9ff; }
+.upload-area.dragover { border-color: #4CAF50; background: #f0fff0; transform: scale(1.02); box-shadow: 0 10px 30px rgba(76, 175, 80, 0.3); }
+.upload-area.dragover::after { content: '📁 Drop files here!'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1.5rem; color: #4CAF50; font-weight: bold; }
+.upload-icon { font-size: 4rem; margin-bottom: 1rem; }
+.file-input { display: none; }
+.upload-btn { background: #667eea; color: white; padding: 12px 30px; border: none; border-radius: 25px; cursor: pointer; font-size: 1rem; margin: 1rem 0.5rem; transition: all 0.3s ease; }
+.upload-btn:hover { background: #764ba2; transform: translateY(-2px); }
+.file-list { margin: 2rem 0; }
+.file-item { background: #f8f9ff; padding: 1rem; margin: 0.5rem 0; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; cursor: move; transition: all 0.3s ease; }
+.file-item:hover { background: #e8f0ff; transform: translateY(-2px); }
+.file-item.dragging { opacity: 0.5; transform: rotate(5deg); }
+.file-item.drag-over { border: 2px dashed #667eea; background: #f0f8ff; }
+.file-name { font-weight: 500; flex: 1; min-width: 200px; }
+.file-name input { background: transparent; border: 1px dashed #ccc; padding: 5px; border-radius: 5px; font-weight: 500; width: 100%; }
+.file-name input:focus { border-color: #667eea; outline: none; background: white; }
+.file-actions { display: flex; gap: 0.5rem; }
+.edit-btn, .remove-btn { border: none; padding: 5px 15px; border-radius: 15px; cursor: pointer; font-size: 0.9rem; }
+.edit-btn { background: #667eea; color: white; }
+.remove-btn { background: #ff4757; color: white; }
+.download-area { text-align: center; margin: 2rem 0; padding: 2rem; background: #f0f8ff; border-radius: 15px; display: none; }
+.download-btn { background: #4CAF50; color: white; padding: 15px 40px; border: none; border-radius: 25px; font-size: 1.2rem; cursor: pointer; margin: 1rem; transition: all 0.3s ease; }
+.download-btn:hover { background: #45a049; transform: scale(1.05); }
+.merge-btn { background: linear-gradient(135deg, #4CAF50, #45a049); color: white; padding: 15px 40px; border: none; border-radius: 25px; font-size: 1.2rem; cursor: pointer; display: block; margin: 2rem auto; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3); font-weight: 600; }
+.merge-btn:hover { background: linear-gradient(135deg, #45a049, #4CAF50); transform: translateY(-2px) scale(1.05); box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4); }
+.merge-btn:disabled { background: #ccc; cursor: not-allowed; transform: none; box-shadow: none; }
+.merge-btn.merging { background: linear-gradient(135deg, #ff9800, #f57c00); animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+.back-btn { position: absolute; top: 2rem; left: 2rem; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; text-decoration: none; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); transition: all 0.3s ease; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(10px); animation: slideInLeft 0.6s ease-out; }
+.back-btn:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4); background: linear-gradient(135deg, #764ba2, #667eea); }
+.back-btn:active { transform: translateY(-1px) scale(1.02); }
+.back-btn::before { content: '🏠'; margin-right: 4px; transition: transform 0.3s ease; }
+.back-btn:hover::before { transform: scale(1.2) rotate(-10deg); }
+@keyframes slideInLeft { 0% { opacity: 0; transform: translateX(-50px); } 100% { opacity: 1; transform: translateX(0); } }
+.download-btn-project { position: fixed; bottom: 20px; right: 20px; background: #4CAF50; color: white; border: none; padding: 15px; border-radius: 50%; font-size: 1.5rem; cursor: pointer; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3); transition: all 0.3s ease; z-index: 1000; }
+.download-btn-project:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4); }
+</style>
+</head>
+<body>
+<a href="./home.html" class="back-btn">← Back to Home</a>
+<div class="container">
+<h1>📄 PDF Merger</h1>
+<div class="upload-area" id="uploadArea">
+<div class="upload-icon">📁</div>
+<p><strong>Drag & Drop PDF files here</strong> or click to select</p>
+<p style="font-size: 0.9rem; color: #666; margin: 0.5rem 0;">Supports: PDF files only</p>
+<button class="upload-btn" onclick="document.getElementById('fileInput').click()">📂 Select Files</button>
+<input type="file" id="fileInput" class="file-input" multiple accept=".pdf">
+</div>
+<div class="file-list" id="fileList"></div>
+<button class="merge-btn" id="mergeBtn" onclick="mergeFiles()" disabled>Merge PDFs</button>
+<div class="download-area" id="downloadArea">
+<h3>✅ PDF Merged Successfully!</h3>
+<p>Your merged PDF is ready for download</p>
+<button class="download-btn" id="downloadBtn" onclick="downloadFile()">📥 Download Merged Document</button>
+<button class="download-btn" onclick="resetMerger()" style="background: #667eea;">🔄 Merge More Files</button>
+</div>
+</div>
+<button class="download-btn-project" onclick="downloadProject()" title="Download Project">📥</button>
+
+<script>
+let selectedFiles = [];
+
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+const fileList = document.getElementById('fileList');
+const mergeBtn = document.getElementById('mergeBtn');
+
+// Enhanced drag and drop for upload area
+uploadArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  uploadArea.classList.add('dragover');
+});
+
+uploadArea.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  uploadArea.classList.remove('dragover');
+});
+
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  uploadArea.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+
+// Prevent default drag behaviors on document
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => e.preventDefault());
+
+fileInput.addEventListener('change', (e) => {
+  handleFiles(e.target.files);
+});
+
+function handleFiles(files) {
+  for (let file of files) {
+    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      if (!selectedFiles.find(f => f.name === file.name)) {
+        selectedFiles.push(file);
+      }
+    } else {
+      alert(`${file.name} is not a PDF file. Only PDF files are allowed.`);
+    }
+  }
+  updateFileList();
+}
+
+function updateFileList() {
+  fileList.innerHTML = '';
+  selectedFiles.forEach((file, index) => {
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    fileItem.draggable = true;
+    fileItem.dataset.index = index;
+    fileItem.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1;">
+<span style="font-size: 1.2rem; cursor: grab; padding: 5px; border-radius: 5px; background: rgba(102, 126, 234, 0.1);" title="Drag to reorder">☰</span>
+        <span style="background: #667eea; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem;">${index + 1}</span>
+        <div class="file-name">
+          <input type="text" value="${file.customName || file.name}" onchange="updateFileName(${index}, this.value)" placeholder="Enter file name">
+        </div>
+      </div>
+      <div class="file-actions">
+        <button class="edit-btn" onclick="editFileName(${index})">✏️ Edit</button>
+        <button class="remove-btn" onclick="removeFile(${index})">🗑️ Remove</button>
+      </div>
+    `;
+    
+    // Add drag event listeners
+    fileItem.addEventListener('dragstart', handleDragStart);
+    fileItem.addEventListener('dragover', handleDragOver);
+    fileItem.addEventListener('drop', handleDrop);
+    fileItem.addEventListener('dragend', handleDragEnd);
+    
+    fileList.appendChild(fileItem);
+  });
+  mergeBtn.disabled = selectedFiles.length < 2;
+}
+
+function removeFile(index) {
+  selectedFiles.splice(index, 1);
+  updateFileList();
+}
+
+let mergedBlob = null;
+let mergedFileName = '';
+
+function updateFileName(index, newName) {
+  selectedFiles[index].customName = newName;
+}
+
+function editFileName(index) {
+  const input = document.querySelector(`input[onchange*="${index}"]`);
+  input.focus();
+  input.select();
+}
+
+async function mergeFiles() {
+  if (selectedFiles.length < 2) {
+    alert('Please select at least 2 files to merge');
+    return;
+  }
+  
+  mergeBtn.textContent = 'Merging PDFs...';
+  mergeBtn.disabled = true;
+  
+  try {
+    let mergedContent = '';
+    
+    // Merge PDFs using PDF-lib
+    
+    // Create PDF blob for download
+    const pdfDoc = await PDFLib.PDFDocument.create();
+    
+    // Add content to PDF
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      const existingPdfBytes = await file.arrayBuffer();
+      const existingPdf = await PDFLib.PDFDocument.load(existingPdfBytes);
+      const copiedPages = await pdfDoc.copyPages(existingPdf, existingPdf.getPageIndices());
+      copiedPages.forEach((page) => pdfDoc.addPage(page));
+    }
+    
+    const pdfBytes = await pdfDoc.save();
+    mergedBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+    mergedFileName = `merged_pdf_${new Date().toISOString().slice(0,10)}.pdf`;
+    
+    // Show download area
+    document.getElementById('downloadArea').style.display = 'block';
+    mergeBtn.style.display = 'none';
+    
+  } catch (error) {
+    alert('Error merging PDFs: ' + error.message);
+    mergeBtn.textContent = 'Merge PDFs';
+    mergeBtn.disabled = false;
+  }
+}
+
+// Remove the old readFileContent function as we now merge PDFs directly
+
+function downloadFile() {
+  if (mergedBlob) {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(mergedBlob);
+    link.download = mergedFileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  }
+}
+
+function resetMerger() {
+  selectedFiles = [];
+  mergedBlob = null;
+  mergedFileName = '';
+  updateFileList();
+  document.getElementById('downloadArea').style.display = 'none';
+  mergeBtn.style.display = 'block';
+  mergeBtn.textContent = 'Merge PDFs';
+  mergeBtn.disabled = true;
+}
+
+// Drag and drop functionality
+let draggedIndex = null;
+
+function handleDragStart(e) {
+  draggedIndex = parseInt(e.target.dataset.index);
+  e.target.classList.add('dragging');
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.target.closest('.file-item').classList.add('drag-over');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  const dropIndex = parseInt(e.target.closest('.file-item').dataset.index);
+  
+  if (draggedIndex !== null && draggedIndex !== dropIndex) {
+    // Swap files
+    const draggedFile = selectedFiles[draggedIndex];
+    selectedFiles.splice(draggedIndex, 1);
+    selectedFiles.splice(dropIndex, 0, draggedFile);
+    updateFileList();
+  }
+  
+  // Clean up
+  document.querySelectorAll('.file-item').forEach(item => {
+    item.classList.remove('drag-over', 'dragging');
+  });
+  draggedIndex = null;
+}
+
+function handleDragEnd(e) {
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.file-item').forEach(item => {
+    item.classList.remove('drag-over');
+  });
+}
+
+function downloadProject() {
+  window.location.href = '/download';
+}
+
+</script>
+</body>
+</html>
